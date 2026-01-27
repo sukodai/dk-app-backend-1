@@ -19,6 +19,7 @@ on:
           - deploy
           - diff
           - destroy
+          - bootstrap
         default: 'deploy'
 
 permissions:
@@ -81,6 +82,11 @@ jobs:
             exit 1
           fi
           npx cdk destroy --all -c env=${{ inputs.environment }} --force
+
+      - name: CDK Bootstrap
+        if: inputs.action == 'bootstrap'
+        working-directory: cdk
+        run: npx cdk bootstrap -c env=${{ inputs.environment }}
 
   # 本番環境への追加承認ステップ
   prod-approval:
