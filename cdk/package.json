@@ -1,0 +1,28 @@
+{
+  "name": "aws-infra-cdk",
+  "version": "1.0.0",
+  "description": "AWS Infrastructure managed with CDK",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "cdk": "cdk",
+    "synth": "cdk synth",
+    "deploy:dev": "cdk deploy --all -c env=dev --require-approval never",
+    "deploy:stg": "cdk deploy --all -c env=stg --require-approval never",
+    "deploy:prod": "cdk deploy --all -c env=prod",
+    "diff:dev": "cdk diff -c env=dev",
+    "diff:stg": "cdk diff -c env=stg",
+    "diff:prod": "cdk diff -c env=prod",
+    "destroy:dev": "cdk destroy --all -c env=dev",
+    "destroy:stg": "cdk destroy --all -c env=stg"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "aws-cdk": "^2.170.0",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.170.0",
+    "constructs": "^10.3.0"
+  }
+}

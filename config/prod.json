@@ -1,0 +1,6 @@
+{
+  "envName": "prod",
+  "account": "123456789002",
+  "region": "ap-northeast-1",
+  "description": "Production environment"
+}

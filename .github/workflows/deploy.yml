@@ -1,0 +1,128 @@
+name: Deploy AWS Infrastructure
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - dev
+          - stg
+          - prod
+      action:
+        description: 'Action to perform'
+        required: true
+        type: choice
+        options:
+          - deploy
+          - diff
+          - destroy
+        default: 'deploy'
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ap-northeast-1
+  NODE_VERSION: '20'
+
+jobs:
+  deploy:
+    name: ${{ inputs.action }} to ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: cdk/package-lock.json
+
+      - name: Install dependencies
+        working-directory: cdk
+        run: npm ci
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: github-actions-${{ inputs.environment }}
+
+      - name: CDK Diff
+        if: inputs.action == 'diff'
+        working-directory: cdk
+        run: npx cdk diff -c env=${{ inputs.environment }}
+
+      - name: CDK Deploy
+        if: inputs.action == 'deploy'
+        working-directory: cdk
+        run: |
+          if [ "${{ inputs.environment }}" = "prod" ]; then
+            npx cdk deploy --all -c env=${{ inputs.environment }} --require-approval broadening
+          else
+            npx cdk deploy --all -c env=${{ inputs.environment }} --require-approval never
+          fi
+
+      - name: CDK Destroy
+        if: inputs.action == 'destroy'
+        working-directory: cdk
+        run: |
+          if [ "${{ inputs.environment }}" = "prod" ]; then
+            echo "Destroy is not allowed for production environment"
+            exit 1
+          fi
+          npx cdk destroy --all -c env=${{ inputs.environment }} --force
+
+  # 本番環境への追加承認ステップ
+  prod-approval:
+    name: Production Approval
+    needs: []
+    if: inputs.environment == 'prod' && inputs.action == 'deploy'
+    runs-on: ubuntu-latest
+    environment: prod-approval
+
+    steps:
+      - name: Approval checkpoint
+        run: echo "Production deployment approved"
+
+  deploy-prod:
+    name: Deploy to Production
+    needs: prod-approval
+    if: inputs.environment == 'prod' && inputs.action == 'deploy'
+    runs-on: ubuntu-latest
+    environment: prod
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: cdk/package-lock.json
+
+      - name: Install dependencies
+        working-directory: cdk
+        run: npm ci
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: github-actions-prod
+
+      - name: CDK Deploy to Production
+        working-directory: cdk
+        run: npx cdk deploy --all -c env=prod --require-approval broadening
