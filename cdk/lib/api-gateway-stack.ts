@@ -1,5 +1,6 @@
 import * as cdk from 'aws-cdk-lib';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import { Construct } from 'constructs';
@@ -22,6 +23,21 @@ export class ApiGatewayStack extends cdk.Stack {
       logGroupName: `/aws/apigateway/${envName}-api-access-logs`,
       retention: logs.RetentionDays.ONE_MONTH,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    // API Gateway用のCloudWatch Logsロール（アカウントレベル設定）
+    const apiGatewayLogsRole = new iam.Role(this, 'ApiGatewayCloudWatchRole', {
+      assumedBy: new iam.ServicePrincipal('apigateway.amazonaws.com'),
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName(
+          'service-role/AmazonAPIGatewayPushToCloudWatchLogs'
+        ),
+      ],
+    });
+
+    // API Gatewayアカウント設定（CloudWatch Logsロールを設定）
+    const apiGatewayAccount = new apigateway.CfnAccount(this, 'ApiGatewayAccount', {
+      cloudWatchRoleArn: apiGatewayLogsRole.roleArn,
     });
 
     // REST API
@@ -60,6 +76,9 @@ export class ApiGatewayStack extends cdk.Stack {
       },
       endpointTypes: [apigateway.EndpointType.REGIONAL],
     });
+
+    // APIがアカウント設定に依存するように設定
+    this.api.node.addDependency(apiGatewayAccount);
 
     // Lambda統合
     const lambdaIntegration = new apigateway.LambdaIntegration(lambdaFunction, {
