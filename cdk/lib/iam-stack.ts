@@ -119,7 +119,33 @@ export class IamStack extends cdk.Stack {
       ],
     });
 
+    // AWS_AgileWorks-app3 ロール
+    const agileWorksApp3Role = new iam.Role(this, 'AgileWorksApp3Role', {
+      roleName: 'AWS_AgileWorks-app3',
+      assumedBy: new iam.CompositePrincipal(
+        new iam.ServicePrincipal('lambda.amazonaws.com'),
+        new iam.ServicePrincipal('apigateway.amazonaws.com'),
+      ),
+    });
+
+    // カスタマー管理ポリシー
+    agileWorksApp3Role.addManagedPolicy(agileWorksApp3Policy);
+
+    // AWS管理ポリシー
+    agileWorksApp3Role.addManagedPolicy(
+      iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonAPIGatewayInvokeFullAccess')
+    );
+    agileWorksApp3Role.addManagedPolicy(
+      iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonDynamoDBReadOnlyAccess')
+    );
+
     // Outputs
+    new cdk.CfnOutput(this, 'AgileWorksApp3RoleArn', {
+      value: agileWorksApp3Role.roleArn,
+      description: 'AWS_AgileWorks-app3 role ARN',
+      exportName: `${envName}-agileworks-app3-role-arn`,
+    });
+
     new cdk.CfnOutput(this, 'LambdaExecutionRoleArn', {
       value: this.lambdaExecutionRole.roleArn,
       description: 'Lambda execution role ARN',
