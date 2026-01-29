@@ -73,10 +73,8 @@ apiGatewayStack.addDependency(lambdaStack);
 const eventBridgeStack = new EventBridgeStack(app, `${prefix}-eventbridge`, {
   env,
   envName: config.envName,
-  lambdaFunction: lambdaStack.sampleFunction,
   description: `EventBridge rules for ${config.description}`,
   tags,
 });
-eventBridgeStack.addDependency(lambdaStack);
 
 app.synth();
