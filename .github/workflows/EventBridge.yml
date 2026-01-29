@@ -1,4 +1,4 @@
-name: Deploy AWS Infrastructure
+name: Deploy EventBridge
 
 on:
   workflow_dispatch:
@@ -19,7 +19,6 @@ on:
           - deploy
           - diff
           - destroy
-          - bootstrap
         default: 'deploy'
 
 permissions:
@@ -29,13 +28,14 @@ permissions:
 env:
   AWS_REGION: ap-northeast-1
   NODE_VERSION: '20'
-  STACKS: ${{ inputs.environment }}-infra-iam ${{ inputs.environment }}-infra-lambda ${{ inputs.environment }}-infra-api
+  STACK_NAME: ${{ inputs.environment }}-infra-eventbridge
 
 jobs:
   deploy:
-    name: ${{ inputs.action }} to ${{ inputs.environment }}
+    name: ${{ inputs.action }} EventBridge to ${{ inputs.environment }}
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
+    if: inputs.environment != 'prod'
 
     steps:
       - name: Checkout
@@ -62,32 +62,17 @@ jobs:
       - name: CDK Diff
         if: inputs.action == 'diff'
         working-directory: cdk
-        run: npx cdk diff ${{ env.STACKS }} -c env=${{ inputs.environment }}
+        run: npx cdk diff ${{ env.STACK_NAME }} -c env=${{ inputs.environment }}
 
       - name: CDK Deploy
         if: inputs.action == 'deploy'
         working-directory: cdk
-        run: |
-          if [ "${{ inputs.environment }}" = "prod" ]; then
-            npx cdk deploy ${{ env.STACKS }} -c env=${{ inputs.environment }} --require-approval broadening
-          else
-            npx cdk deploy ${{ env.STACKS }} -c env=${{ inputs.environment }} --require-approval never
-          fi
+        run: npx cdk deploy ${{ env.STACK_NAME }} -c env=${{ inputs.environment }} --require-approval never
 
       - name: CDK Destroy
         if: inputs.action == 'destroy'
         working-directory: cdk
-        run: |
-          if [ "${{ inputs.environment }}" = "prod" ]; then
-            echo "Destroy is not allowed for production environment"
-            exit 1
-          fi
-          npx cdk destroy ${{ env.STACKS }} -c env=${{ inputs.environment }} --force
-
-      - name: CDK Bootstrap
-        if: inputs.action == 'bootstrap'
-        working-directory: cdk
-        run: npx cdk bootstrap -c env=${{ inputs.environment }}
+        run: npx cdk destroy ${{ env.STACK_NAME }} -c env=${{ inputs.environment }} --force
 
   # 本番環境への追加承認ステップ
   prod-approval:
@@ -99,10 +84,10 @@ jobs:
 
     steps:
       - name: Approval checkpoint
-        run: echo "Production deployment approved"
+        run: echo "Production EventBridge deployment approved"
 
   deploy-prod:
-    name: Deploy to Production
+    name: Deploy EventBridge to Production
     needs: prod-approval
     if: inputs.environment == 'prod' && inputs.action == 'deploy'
     runs-on: ubuntu-latest
@@ -132,4 +117,4 @@ jobs:
 
       - name: CDK Deploy to Production
         working-directory: cdk
-        run: npx cdk deploy ${{ env.STACKS }} -c env=prod --require-approval broadening
+        run: npx cdk deploy ${{ env.STACK_NAME }} -c env=prod --require-approval broadening
