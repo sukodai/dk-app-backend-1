@@ -29,7 +29,7 @@ permissions:
 env:
   AWS_REGION: ap-northeast-1
   NODE_VERSION: '20'
-  STACKS: ${{ inputs.environment }}-infra-iam ${{ inputs.environment }}-infra-lambda ${{ inputs.environment }}-infra-api
+  STACKS: ${{ inputs.environment }}-infra-iam ${{ inputs.environment }}-infra-lambda
 
 jobs:
   deploy:
