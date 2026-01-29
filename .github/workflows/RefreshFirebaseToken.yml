@@ -1,1 +1,227 @@
 name: Deploy RefreshFirebaseToken Lambda
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - dev
+          - stg
+          - prod
+
+env:
+  AWS_REGION: ap-northeast-1
+  LAMBDA_FUNCTION_NAME: AWS_AgileWorks-app_RefreshFirebaseToken3
+  S3_KEY: lambda-jar/aw_lambda-token-all.jar
+  LAMBDA_RUNTIME: java17
+  LAMBDA_ARCHITECTURE: x86_64
+  LAMBDA_HANDLER: jp.atled.cloud.lambda.mobileapp.RefreshTokenHandler::handleRequest
+  LAMBDA_ROLE_NAME: AWS_AgileWorks-app3
+
+jobs:
+  # ==================================================
+  # dev へのデプロイ: dev S3 の JAR で Lambda を作成/更新
+  # ==================================================
+  deploy-dev:
+    name: Deploy to dev
+    if: inputs.environment == 'dev'
+    runs-on: ubuntu-latest
+    environment: dev
+
+    steps:
+      - name: Configure AWS credentials (dev)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Get AWS Account ID
+        id: account
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "id=$ACCOUNT_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Check if Lambda function exists
+        id: check
+        run: |
+          if aws lambda get-function --function-name "${{ env.LAMBDA_FUNCTION_NAME }}" 2>/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create Lambda function
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          ROLE_ARN="arn:aws:iam::${{ steps.account.outputs.id }}:role/${{ env.LAMBDA_ROLE_NAME }}"
+
+          aws lambda create-function \
+            --function-name "${{ env.LAMBDA_FUNCTION_NAME }}" \
+            --runtime "${{ env.LAMBDA_RUNTIME }}" \
+            --architectures "${{ env.LAMBDA_ARCHITECTURE }}" \
+            --handler "${{ env.LAMBDA_HANDLER }}" \
+            --role "$ROLE_ARN" \
+            --code "S3Bucket=${{ secrets.S3_BUCKET }},S3Key=${{ env.S3_KEY }}" \
+            --environment "Variables={PrivateKey=/AgileWorks-app/Firebase/PrivateKey2,AccessToken=/AgileWorks-app/Firebase/AccessToken2,Scoped=https://www.googleapis.com/auth/firebase.messaging}"
+
+          aws lambda wait function-active-v2 \
+            --function-name "${{ env.LAMBDA_FUNCTION_NAME }}"
+
+      - name: Update Lambda function code
+        if: steps.check.outputs.exists == 'true'
+        run: |
+          aws lambda update-function-code \
+            --function-name "${{ env.LAMBDA_FUNCTION_NAME }}" \
+            --s3-bucket "${{ secrets.S3_BUCKET }}" \
+            --s3-key "${{ env.S3_KEY }}"
+
+          aws lambda wait function-updated \
+            --function-name "${{ env.LAMBDA_FUNCTION_NAME }}"
+
+      - name: Update Lambda function configuration
+        if: steps.check.outputs.exists == 'true'
+        run: |
+          ROLE_ARN="arn:aws:iam::${{ steps.account.outputs.id }}:role/${{ env.LAMBDA_ROLE_NAME }}"
+
+          aws lambda update-function-configuration \
+            --function-name "${{ env.LAMBDA_FUNCTION_NAME }}" \
+            --runtime "${{ env.LAMBDA_RUNTIME }}" \
+            --architectures "${{ env.LAMBDA_ARCHITECTURE }}" \
+            --handler "${{ env.LAMBDA_HANDLER }}" \
+            --role "$ROLE_ARN" \
+            --environment "Variables={PrivateKey=/AgileWorks-app/Firebase/PrivateKey2,AccessToken=/AgileWorks-app/Firebase/AccessToken2,Scoped=https://www.googleapis.com/auth/firebase.messaging}"
+
+          aws lambda wait function-updated \
+            --function-name "${{ env.LAMBDA_FUNCTION_NAME }}"
+
+      - name: Verify deployment
+        run: |
+          aws lambda get-function \
+            --function-name "${{ env.LAMBDA_FUNCTION_NAME }}" \
+            --query 'Configuration.[FunctionName,LastModified,Runtime,Handler,Role]' \
+            --output table
+
+  # ==================================================
+  # stg / prod へのデプロイ
+  # Job 1: dev 認証情報で dev S3 から JAR をダウンロード
+  # Job 2: ターゲット環境の認証情報で S3 アップロード → Lambda 作成/更新
+  # ==================================================
+  download-jar:
+    name: Download JAR from dev S3
+    if: inputs.environment == 'stg' || inputs.environment == 'prod'
+    runs-on: ubuntu-latest
+    environment: dev
+
+    steps:
+      - name: Configure AWS credentials (dev)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Download JAR from dev S3
+        run: |
+          aws s3 cp "s3://${{ secrets.S3_BUCKET }}/${{ env.S3_KEY }}" ./aw_lambda-token-all.jar
+
+      - name: Upload JAR as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lambda-jar
+          path: ./aw_lambda-token-all.jar
+          retention-days: 1
+
+  deploy-target:
+    name: Deploy to ${{ inputs.environment }}
+    if: inputs.environment == 'stg' || inputs.environment == 'prod'
+    needs: download-jar
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Download JAR artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: lambda-jar
+
+      - name: Configure AWS credentials (${{ inputs.environment }})
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Get AWS Account ID
+        id: account
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "id=$ACCOUNT_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Upload JAR to target S3
+        run: |
+          aws s3 cp ./aw_lambda-token-all.jar \
+            "s3://${{ secrets.S3_BUCKET }}/${{ env.S3_KEY }}"
+
+      - name: Check if Lambda function exists
+        id: check
+        run: |
+          if aws lambda get-function --function-name "${{ env.LAMBDA_FUNCTION_NAME }}" 2>/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create Lambda function
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          ROLE_ARN="arn:aws:iam::${{ steps.account.outputs.id }}:role/${{ env.LAMBDA_ROLE_NAME }}"
+
+          aws lambda create-function \
+            --function-name "${{ env.LAMBDA_FUNCTION_NAME }}" \
+            --runtime "${{ env.LAMBDA_RUNTIME }}" \
+            --architectures "${{ env.LAMBDA_ARCHITECTURE }}" \
+            --handler "${{ env.LAMBDA_HANDLER }}" \
+            --role "$ROLE_ARN" \
+            --code "S3Bucket=${{ secrets.S3_BUCKET }},S3Key=${{ env.S3_KEY }}" \
+            --environment "Variables={PrivateKey=/AgileWorks-app/Firebase/PrivateKey2,AccessToken=/AgileWorks-app/Firebase/AccessToken2,Scoped=https://www.googleapis.com/auth/firebase.messaging}"
+
+          aws lambda wait function-active-v2 \
+            --function-name "${{ env.LAMBDA_FUNCTION_NAME }}"
+
+      - name: Update Lambda function code
+        if: steps.check.outputs.exists == 'true'
+        run: |
+          aws lambda update-function-code \
+            --function-name "${{ env.LAMBDA_FUNCTION_NAME }}" \
+            --s3-bucket "${{ secrets.S3_BUCKET }}" \
+            --s3-key "${{ env.S3_KEY }}"
+
+          aws lambda wait function-updated \
+            --function-name "${{ env.LAMBDA_FUNCTION_NAME }}"
+
+      - name: Update Lambda function configuration
+        if: steps.check.outputs.exists == 'true'
+        run: |
+          ROLE_ARN="arn:aws:iam::${{ steps.account.outputs.id }}:role/${{ env.LAMBDA_ROLE_NAME }}"
+
+          aws lambda update-function-configuration \
+            --function-name "${{ env.LAMBDA_FUNCTION_NAME }}" \
+            --runtime "${{ env.LAMBDA_RUNTIME }}" \
+            --architectures "${{ env.LAMBDA_ARCHITECTURE }}" \
+            --handler "${{ env.LAMBDA_HANDLER }}" \
+            --role "$ROLE_ARN" \
+            --environment "Variables={PrivateKey=/AgileWorks-app/Firebase/PrivateKey2,AccessToken=/AgileWorks-app/Firebase/AccessToken2,Scoped=https://www.googleapis.com/auth/firebase.messaging}"
+
+          aws lambda wait function-updated \
+            --function-name "${{ env.LAMBDA_FUNCTION_NAME }}"
+
+      - name: Verify deployment
+        run: |
+          aws lambda get-function \
+            --function-name "${{ env.LAMBDA_FUNCTION_NAME }}" \
+            --query 'Configuration.[FunctionName,LastModified,Runtime,Handler,Role]' \
+            --output table
