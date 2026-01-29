@@ -1,4 +1,4 @@
-name: Deploy RefreshFirebaseToken Lambda
+name: Deploy Lambda RefreshFirebaseToken
 
 on:
   workflow_dispatch:

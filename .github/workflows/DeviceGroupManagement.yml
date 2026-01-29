@@ -1,4 +1,4 @@
-name: Deploy DeviceGroupManagement Lambda
+name: Deploy Lambda DeviceGroupManagement
 
 on:
   workflow_dispatch:
