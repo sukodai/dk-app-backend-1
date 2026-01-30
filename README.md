@@ -7,14 +7,12 @@ AWS CDK を使用してインフラをコードで管理し、GitHub Actions で
 ```
 ├── cdk/
 │   ├── bin/
-│   │   ├── app.ts              # メインCDKアプリ
-│   │   └── setup-oidc.ts       # OIDC認証セットアップ
+│   │   └── app.ts              # メインCDKアプリ
 │   ├── lib/
 │   │   ├── iam-stack.ts        # IAMポリシー・ロール
 │   │   ├── lambda-stack.ts     # Lambda関数
 │   │   ├── api-gateway-stack.ts # API Gateway
-│   │   ├── eventbridge-stack.ts # EventBridge
-│   │   └── github-oidc-stack.ts # GitHub OIDC認証
+│   │   └── eventbridge-stack.ts # EventBridge
 │   ├── cdk.json
 │   ├── package.json
 │   └── tsconfig.json
@@ -58,34 +56,7 @@ aws-vault exec stg -- npx cdk bootstrap -c env=stg
 aws-vault exec prod -- npx cdk bootstrap -c env=prod
 ```
 
-### 3. GitHub OIDC認証のセットアップ（各アカウントで初回のみ）
-
-GitHub リポジトリを作成後、各AWSアカウントでOIDC認証を設定します。
-
-```bash
-# dev環境
-aws-vault exec dev -- npx cdk deploy \
-  -c env=dev \
-  -c githubOrg=YOUR_GITHUB_ORG \
-  -c githubRepo=YOUR_REPO_NAME \
-  -a "npx ts-node bin/setup-oidc.ts"
-
-# stg環境
-aws-vault exec stg -- npx cdk deploy \
-  -c env=stg \
-  -c githubOrg=YOUR_GITHUB_ORG \
-  -c githubRepo=YOUR_REPO_NAME \
-  -a "npx ts-node bin/setup-oidc.ts"
-
-# prod環境
-aws-vault exec prod -- npx cdk deploy \
-  -c env=prod \
-  -c githubOrg=YOUR_GITHUB_ORG \
-  -c githubRepo=YOUR_REPO_NAME \
-  -a "npx ts-node bin/setup-oidc.ts"
-```
-
-### 4. GitHub リポジトリの設定
+### 3. GitHub リポジトリの設定
 
 1. **Environments の作成**
    - GitHub リポジトリの Settings → Environments で以下を作成:
@@ -171,7 +142,6 @@ aws-vault exec stg -- npm run destroy:stg
 | `{env}-infra-lambda` | Lambda関数 |
 | `{env}-infra-api` | API Gateway |
 | `{env}-infra-eventbridge` | EventBridgeルール・イベントバス |
-| `{env}-github-oidc` | GitHub OIDC認証（初期セットアップ用） |
 
 ## カスタマイズ
 
